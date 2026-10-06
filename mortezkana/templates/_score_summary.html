@@ -1,0 +1,8 @@
+{% if awards %}
+{% for kind, title in [('individual', 'Puntuaciones individuales'), ('team', 'Puntuaciones de equipos')] %}
+{% set rows = awards|selectattr('target_kind', 'equalto', kind)|list %}
+{% if rows %}
+<table><caption>{{ title }}</caption><thead><tr><th scope="col">{{ 'Persona' if kind == 'individual' else 'Equipo' }}</th><th scope="col" class="number">Puntos</th></tr></thead><tbody>{% for award in rows %}<tr><th scope="row">{{ award.target_name }}</th><td class="number">{{ award.points }}</td></tr>{% endfor %}</tbody></table>
+{% endif %}
+{% endfor %}
+{% else %}<p class="muted">Esta prueba ha finalizado sin puntuaciones registradas.</p>{% endif %}

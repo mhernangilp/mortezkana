@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% block title %}Pruebas · Mortezkana{% endblock %}
+{% block content %}
+<p class="eyebrow">Tres días de juego</p><h1>Las pruebas</h1><div class="stack">
+{% for challenge in challenges %}
+<article class="card padded"><p class="eyebrow">Día {{ challenge.day }} · {{ labels[challenge.kind] }}</p><h2>{{ challenge.name }}</h2><p>{{ challenge.description or 'La información de esta prueba estará disponible pronto.' }}</p><span class="badge">{{ labels[challenge.status] }}</span>
+{% if challenge.status == 'completed' %}<h3>Resumen de puntuaciones</h3>{% with awards=results_by_challenge.get(challenge.id, []) %}{% include '_score_summary.html' %}{% endwith %}{% endif %}
+</article>
+{% else %}<p class="empty">Todavía no hay pruebas programadas.</p>{% endfor %}
+</div>{% endblock %}

@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+{% block title %}Administración · Mortezkana{% endblock %}
+{% macro token() %}<input type="hidden" name="csrf" value="{{ csrf_token() }}">{% endmacro %}
+{% macro delete_link(kind, entity) %}
+<a class="delete-link" href="{{ url_for('web.delete_entity', kind=kind, entity_id=entity.id) }}">Eliminar {{ entity.name }}</a>
+{% endmacro %}
+{% macro challenge_fields(challenge=none) %}
+<label>Nombre<input name="name" value="{{ challenge.name if challenge else '' }}" required maxlength="80"></label>
+<label>Descripción y reglas<textarea name="description" maxlength="2000" rows="3">{{ challenge.description if challenge else '' }}</textarea></label>
+<label>Tipo<select name="kind">{% for kind in ['individual', 'team', 'hybrid'] %}<option value="{{ kind }}" {% if challenge and challenge.kind == kind %}selected{% endif %}>{{ labels[kind] }}</option>{% endfor %}</select></label>
+<label>Día<select name="day">{% for day in [1, 2, 3] %}<option {% if challenge and challenge.day == day %}selected{% endif %}>{{ day }}</option>{% endfor %}</select></label>
+{% endmacro %}
+{% block content %}
+<div class="heading"><h1>Administración</h1><form action="{{ url_for('web.logout') }}" method="post">{{ token() }}<button class="secondary">Salir</button></form></div>
+<p>Crea las personas, prepara los equipos y después asigna sus integrantes.</p>
+<div class="admin-grid">
+<section class="card padded">
+  <h2>1. Crear personas · {{ participants|length }}/10</h2>
+  {% if participants|length < 10 %}<form method="post" action="{{ url_for('web.mutate', action='participants') }}">{{ token() }}<label>Nombre<input name="name" required maxlength="80"></label><button>Añadir persona</button></form>{% endif %}
+  <div class="stack management-list">{% for person in participants %}
+    <details><summary>{{ person.name }}</summary>
+      <form method="post" action="{{ url_for('web.mutate', action='edit-participants') }}">{{ token() }}<input type="hidden" name="participant_id" value="{{ person.id }}"><label>Nombre<input name="name" value="{{ person.name }}" required maxlength="80"></label><button>Guardar nombre</button></form>
+      {{ delete_link('participants', person) }}
+    </details>
+  {% else %}<p class="muted">Todavía no hay personas creadas.</p>{% endfor %}</div>
+</section>
+<section class="card padded">
+  <h2>2. Crear equipos · {{ teams|length }}/2</h2>
+  {% if teams|length < 2 %}<form method="post" action="{{ url_for('web.mutate', action='teams') }}">{{ token() }}<label>Nombre<input name="name" required maxlength="80"></label><button>Añadir equipo</button></form>{% endif %}
+  <div class="stack management-list">{% for team in teams %}
+    <details><summary>{{ team.name }} · {{ participants|selectattr('team_id', 'equalto', team.id)|list|length }}/5</summary>
+      <form method="post" action="{{ url_for('web.mutate', action='edit-teams') }}">{{ token() }}<input type="hidden" name="team_id" value="{{ team.id }}"><label>Nombre<input name="name" value="{{ team.name }}" required maxlength="80"></label><button>Guardar nombre</button></form>
+      {{ delete_link('teams', team) }}
+    </details>
+  {% else %}<p class="muted">Todavía no hay equipos creados.</p>{% endfor %}</div>
+</section>
+</div>
+<section class="card padded">
+  <h2>3. Asignar personas a equipos</h2>
+  <p class="muted">Cada equipo admite cinco personas. Al cambiar una persona de equipo, sus puntos se trasladan a su nuevo equipo. Los puntos concedidos directamente a un equipo permanecen en ese equipo.</p>
+  <div class="stack">{% for person in participants %}
+    <form class="assignment" method="post" action="{{ url_for('web.mutate', action='assign-team') }}">
+      {{ token() }}<input type="hidden" name="participant_id" value="{{ person.id }}">
+      <label>{{ person.name }}<select name="team_id"><option value="" {% if person.team_id is none %}selected{% endif %}>Sin equipo</option>{% for team in teams %}<option value="{{ team.id }}" {% if person.team_id == team.id %}selected{% endif %}>{{ team.name }}</option>{% endfor %}</select></label><button>Guardar equipo</button>
+    </form>
+  {% else %}<p class="muted">Primero crea las personas que van a participar.</p>{% endfor %}</div>
+</section>
+<div class="admin-grid">
+<section class="card padded"><h2>Nueva prueba</h2><form method="post" action="{{ url_for('web.mutate', action='challenges') }}">{{ token() }}{{ challenge_fields() }}<button>Añadir prueba</button></form></section>
+<section class="card padded">
+  <h2>Registrar resultado</h2>
+  {% if challenges and (participants or teams) %}
+  <p class="muted">Introduce los puntos acordados. Los puntos individuales también cuentan para el equipo actual de cada persona. En las pruebas mixtas puedes añadir puntos directamente al equipo.</p>
+  <form method="post" action="{{ url_for('web.mutate', action='results') }}">{{ token() }}
+    <label>Prueba<select name="challenge_id">{% for challenge in challenges %}<option value="{{ challenge.id }}">{{ challenge.name }} · {{ labels[challenge.kind] }}</option>{% endfor %}</select></label>
+    <label>Persona o equipo<select name="target">{% for person in participants %}<option value="participant:{{ person.id }}">{{ person.name }} (individual)</option>{% endfor %}{% for team in teams %}<option value="team:{{ team.id }}">{{ team.name }} (equipo)</option>{% endfor %}</select></label>
+    <label>Puntos<input name="points" type="number" step="1" min="-1000000" max="1000000" required></label><label>Resultado o motivo<textarea name="notes" required maxlength="500" rows="2"></textarea></label><button>Guardar resultado</button>
+  </form>{% else %}<p>Primero añade personas o equipos y pruebas.</p>{% endif %}
+</section>
+</div>
+<section><h2>Gestionar pruebas</h2><div class="stack">
+{% for challenge in challenges %}
+  <details class="card padded"><summary>{{ challenge.name }} · Día {{ challenge.day }} · {{ labels[challenge.status] }}</summary>
+    <form method="post" action="{{ url_for('web.mutate', action='edit-challenges') }}">{{ token() }}<input type="hidden" name="challenge_id" value="{{ challenge.id }}">{{ challenge_fields(challenge) }}<p class="muted">El tipo solo se puede cambiar si es compatible con los resultados registrados.</p><button>Guardar prueba</button></form>
+    <form class="management-list" method="post" action="{{ url_for('web.mutate', action='status') }}">{{ token() }}<input type="hidden" name="challenge_id" value="{{ challenge.id }}"><label>Estado<select name="status">{% for status in ['pending', 'active', 'completed'] %}<option value="{{ status }}" {% if status == challenge.status %}selected{% endif %}>{{ labels[status] }}</option>{% endfor %}</select></label><button>Actualizar estado</button></form>
+    {{ delete_link('challenges', challenge) }}
+  </details>
+{% else %}<p class="empty">Sin pruebas por ahora.</p>{% endfor %}
+</div></section>
+<section><h2>Resultados y correcciones</h2><p class="muted">Abre una prueba para ver sus puntuaciones. Una corrección sustituye los puntos anteriores; no los suma.</p><div class="stack">
+{% for challenge in challenges %}
+  {% set results = results_by_challenge.get(challenge.id, []) %}
+  <details class="card padded result-group"><summary>{{ challenge.name }} · {{ results|length }} resultados · {{ labels[challenge.status] }}</summary>
+    {% if challenge.status == 'completed' %}<h3>Resumen de puntuaciones</h3>{% with awards=results %}{% include '_score_summary.html' %}{% endwith %}{% endif %}
+    <div class="stack management-list">{% for result in results %}
+      <details><summary>{{ result.target_name }} · {{ labels[result.target_kind] }} · {{ result.points }} pts</summary><p>{{ result.notes }}</p>
+        <form method="post" action="{{ url_for('web.mutate', action='corrections') }}">{{ token() }}<input type="hidden" name="result_id" value="{{ result.id }}"><input type="hidden" name="revision" value="{{ result.revision }}"><label>Puntos corregidos<input name="points" type="number" value="{{ result.points }}" min="-1000000" max="1000000" step="1" required></label><label>Motivo de la corrección<textarea name="notes" maxlength="500" required></textarea></label><button>Guardar corrección</button></form>
+      </details>
+    {% else %}{% if challenge.status != 'completed' %}<p class="muted">Todavía no hay resultados para esta prueba.</p>{% endif %}{% endfor %}</div>
+  </details>
+{% else %}<p class="empty">Todavía no hay pruebas.</p>{% endfor %}
+</div></section>
+{% endblock %}

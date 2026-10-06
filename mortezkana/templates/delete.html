@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block title %}Confirmar eliminación · Mortezkana{% endblock %}
+{% block content %}
+<p class="eyebrow">Confirmación {{ '1 de 2' if stage == 'review' else '2 de 2' }}</p>
+<h1>Eliminar {{ label }}</h1>
+<div class="card padded narrow">
+  <h2>{{ entity.name }}</h2>
+  <p class="notice error">Se eliminarán {{ result_count }} resultados asociados y sus puntuaciones. Esta acción no se puede deshacer.</p>
+  {% if kind == 'teams' %}<p>{{ member_count }} personas quedarán sin equipo. Sus puntos individuales se conservarán, pero dejarán de contribuir a la clasificación de equipos hasta que las reasignes.</p>{% endif %}
+  {% if kind == 'challenges' %}<p>Se eliminarán todos los resultados de esta prueba, tanto individuales como de equipos.</p>{% endif %}
+  {% if kind == 'participants' %}<p>También desaparecerá la aportación de esta persona a los puntos de su equipo.</p>{% endif %}
+  <form method="post">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="stage" value="{{ stage }}">
+    {% if stage == 'review' %}
+    <input type="hidden" name="fingerprint" value="{{ fingerprint }}">
+    <label class="checkbox"><input name="acknowledge" value="yes" type="checkbox" required>Entiendo que se eliminarán los resultados y sus puntuaciones.</label>
+    <button class="danger">Continuar a la segunda confirmación</button>
+    {% else %}
+    <input type="hidden" name="ticket" value="{{ ticket }}">
+    <label>Escribe ELIMINAR para confirmar definitivamente<input name="confirmation" required pattern="ELIMINAR" autocomplete="off" spellcheck="false"></label>
+    <button class="danger">Eliminar definitivamente</button>
+    {% endif %}
+    <a class="button secondary" href="{{ url_for('web.admin') }}">Cancelar y volver</a>
+  </form>
+</div>
+{% endblock %}

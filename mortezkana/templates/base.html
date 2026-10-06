@@ -1,0 +1,6 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#172b24"><title>{% block title %}Mortezkana{% endblock %}</title><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
+<body><header><a class="brand" href="{{ url_for('web.index') }}">Mortezkana <span>El finde se juega aquí</span></a><nav aria-label="Navegación principal">{% for endpoint, label in [('index', 'Clasificación'), ('challenges', 'Pruebas'), ('participants', 'Participantes')] %}<a href="{{ url_for('web.' + endpoint) }}" {% if request.endpoint == 'web.' + endpoint %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav></header>
+<main>{% for category, message in get_flashed_messages(with_categories=true) %}<p class="notice {{ category }}" role="status">{{ message }}</p>{% endfor %}{% block content %}{% endblock %}</main>
+<footer><span>Un fin de semana. Dos equipos. Todo por jugar.</span><a href="{{ url_for('web.admin') }}">Administración</a></footer></body></html>
