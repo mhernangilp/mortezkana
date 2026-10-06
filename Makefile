@@ -1,4 +1,4 @@
-.PHONY: install init dev test check
+.PHONY: install init dev test check browser-check
 install:
 	python3 -m venv .venv
 	.venv/bin/python -m pip install -r requirements.txt
@@ -10,3 +10,5 @@ test:
 	.venv/bin/python -m unittest discover -s tests -v
 check: test
 	.venv/bin/python -m compileall -q mortezkana tests
+browser-check:
+	.venv/bin/python -m scripts.check_browser

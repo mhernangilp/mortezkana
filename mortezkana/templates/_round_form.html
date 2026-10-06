@@ -1,0 +1,20 @@
+<form method="post" action="{{ url_for('web.mutate', action='edit-rounds' if match else 'rounds') }}">
+<input type="hidden" name="csrf" value="{{ csrf_token() }}">
+{% if match %}<input type="hidden" name="round_id" value="{{ match.id }}"><input type="hidden" name="revision" value="{{ match.revision }}">{% else %}<input type="hidden" name="challenge_id" value="{{ challenge.id }}"><input type="hidden" name="submission_key" value="{{ round_submission }}">{% endif %}
+<label>Número de ronda<input type="number" name="round_number" min="1" max="999" step="1" value="{{ match.round_number if match else 1 }}" required></label>
+<label>Formato del enfrentamiento<input name="format" list="match-formats" value="{{ match.format if match else '' }}" maxlength="80" placeholder="Equipo vs Equipo, 1vs1, 2vs2, 1vs2…" required></label>
+<p class="muted">Selecciona un equipo, personas concretas o ambos en cada lado. Puedes elegir distintas cantidades de personas.</p>
+<div class="admin-grid">
+{% for side, label in [('left', 'Lado A'), ('right', 'Lado B')] %}
+<fieldset><legend>{{ label }}</legend>
+<label>Equipo (opcional)<select name="{{ side }}_team_id"><option value="">Sin equipo seleccionado</option>{% if match and match[side + '_team_id'] is none and match[side + '_team_name'] %}<option value="archived" selected>{{ match[side + '_team_name'] }} (equipo eliminado)</option>{% endif %}{% for team in teams %}<option value="{{ team.id }}" {% if match and match[side + '_team_id'] == team.id %}selected{% endif %}>{{ team.name }}</option>{% endfor %}</select></label>
+<p class="muted">Personas que participan</p>
+{% set selected = match[side + '_people']|map(attribute='participant_id')|list if match else [] %}
+{% for person in participants %}<label class="checkbox"><input name="{{ side }}_people" type="checkbox" value="{{ person.id }}" {% if person.id in selected %}checked{% endif %}>{{ person.name }}</label>{% endfor %}
+{% if match %}{% for person in match[side + '_people'] if person.participant_id is none %}<label class="checkbox"><input name="{{ side }}_people" type="checkbox" value="archived:{{ person.id }}" checked>{{ person.participant_name }} (persona eliminada)</label>{% endfor %}{% endif %}
+</fieldset>
+{% endfor %}
+</div>
+<label>Resultado de la ronda<textarea name="outcome" maxlength="1000" rows="3" placeholder="Ej.: Lado A gana 3–1. Ana acertó dos tiros." required>{{ match.outcome if match else '' }}</textarea></label>
+<button>{{ 'Guardar corrección de ronda' if match else 'Guardar ronda' }}</button>
+</form>

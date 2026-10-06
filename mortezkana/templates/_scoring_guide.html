@@ -1,0 +1,9 @@
+<details class="card padded scoring-guide">
+  <summary>Chuleta de puntuaciones</summary>
+  <div class="admin-grid">
+    <div><h3>Individual o mixta</h3><table><caption>Puntuación individual por posición</caption><thead><tr><th scope="col">Posición</th><th scope="col" class="number">Puntos</th></tr></thead><tbody>{% for points in individual_points %}<tr><th scope="row">{{ loop.index }}.º</th><td class="number">{{ points }} pts</td></tr>{% endfor %}</tbody></table>
+    <h3>Puntuación individual en prueba mixta</h3><p>Victoria individual: <strong>+{{ hybrid_individual_points.win }} puntos</strong>.</p><p>Derrota: <strong>+{{ hybrid_individual_points.loss }} punto</strong>.</p></div>
+    <div><h3>Equipo en una prueba mixta</h3><p>Si tu equipo gana la prueba global: <strong>+{{ hybrid_team_points.win }} pts</strong>.</p><p>Si pierde: <strong>+{{ hybrid_team_points.loss }} pts</strong>.</p><p class="muted">Estos puntos se conceden al equipo, además de las puntuaciones individuales.</p>
+    <h3>Solo por equipos</h3><p>Ganadores: <strong>+{{ team_member_points.win }} pts a cada persona</strong>.</p><p>Perdedores: <strong>+{{ team_member_points.loss }} pts a cada persona</strong>.</p><p class="muted">También puede haber puntuaciones individuales extraordinarias, por ejemplo por ser MVP, con su motivo indicado en el resultado.</p></div>
+  </div><p class="muted">Los puntos los registra la administración. Los resultados de las rondas aportan información y no añaden puntos automáticamente a la clasificación.</p>
+</details>

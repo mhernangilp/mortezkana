@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block title %}La gran final · Mortezkana{% endblock %}
+{% block content %}
+<div class="final-hero">
+  <div class="confetti" aria-hidden="true">{% for piece in range(16) %}<span></span>{% endfor %}</div>
+  <p class="eyebrow">La gran final</p><p class="final-trophy" aria-hidden="true">🏆</p><h1>¡Un finde para recordar!</h1><p>Las pruebas, las risas y cada punto nos han traído hasta aquí.</p>
+</div>
+<section aria-labelledby="podium-heading"><h2 id="podium-heading">Podio individual</h2>
+{% if podium %}<div class="podium">{% for place in podium %}<article class="podium-place podium-place-{{ place.rank }}"><span class="podium-rank">{{ place.rank }}.º</span>{% for person in place.people %}<div class="podium-person"><h3>{{ person.name }}</h3><p>{{ person.points }} pts</p></div>{% endfor %}{% if place.people|length > 1 %}<p class="muted">Posición compartida</p>{% endif %}</article>{% endfor %}</div>
+{% else %}<p class="empty">Todavía no hay participantes en la clasificación.</p>{% endif %}
+</section>
+<section aria-labelledby="winning-team-heading"><h2 id="winning-team-heading">{{ 'Empate entre equipos' if winning_teams|length > 1 else 'Equipo ganador' }}</h2>
+<div class="team-grid">{% for team in winning_teams %}<article class="team winning-team"><span>{{ 'Primer puesto compartido' if winning_teams|length > 1 else '¡La victoria es vuestra!' }}</span><h3>{{ team.name }}</h3><p class="score">{{ team.points }} <small>pts</small></p></article>{% else %}<p class="empty">Todavía no hay equipos en la clasificación.</p>{% endfor %}</div>
+</section>
+<section aria-labelledby="global-heading"><h2 id="global-heading">Clasificación global</h2>{% include '_leaderboard_table.html' %}
+{% if teams %}<h3>Clasificación de equipos</h3><div class="card"><table><thead><tr><th scope="col">Pos.</th><th scope="col">Equipo</th><th scope="col" class="number">Puntos</th></tr></thead><tbody>{% for team in teams %}<tr><td>{{ team.rank }}</td><th scope="row">{{ team.name }}</th><td class="number">{{ team.points }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+</section>
+<a class="button secondary" href="{{ url_for('web.index') }}">Volver a la clasificación</a>
+{% endblock %}

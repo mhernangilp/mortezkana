@@ -1,0 +1,19 @@
+<section aria-labelledby="history-heading">
+<h2 id="history-heading">Evolución de las puntuaciones</h2>
+<p class="muted">Puntos acumulados después de cada prueba, en el orden cronológico configurado. Se incluyen pruebas con puntuaciones o finalizadas. Los equipos suman las aportaciones de sus integrantes actuales.</p>
+{% if history.challenges and (history.people or history.teams) %}
+<div id="score-history" class="card padded" data-history="{{ history|tojson|forceescape }}" hidden>
+  <div class="chart-switch" role="group" aria-label="Visualización del gráfico"><button type="button" data-view="people" aria-pressed="true">Personas</button><button type="button" data-view="teams" aria-pressed="false">Equipos</button></div>
+  <div id="history-plot" class="history-plot"></div>
+  <label>Consultar puntos después de una prueba<select id="history-step"></select></label>
+  <p id="history-detail" class="muted" role="status" aria-live="polite"></p>
+  <div id="history-legend" class="history-legend" aria-label="Series y puntuaciones del gráfico"></div>
+</div>
+<noscript><p class="muted">Activa JavaScript para alternar el gráfico. También puedes consultar los datos a continuación.</p></noscript>
+<details class="history-data"><summary>Consultar datos de evolución</summary>
+{% for key, label in [('people', 'Personas'), ('teams', 'Equipos')] %}
+<details><summary>{{ label }}</summary>{% for challenge in history.challenges %}{% set step = loop.index %}<h3>{{ challenge.chronology_position }}. {{ challenge.name }}</h3><ul>{% for series in history[key] %}<li>{{ series.name }}: {{ series['values'][step] }} pts</li>{% else %}<li>Sin integrantes registrados.</li>{% endfor %}</ul>{% endfor %}</details>
+{% endfor %}
+</details>
+{% else %}<p class="empty">La evolución aparecerá cuando haya puntuaciones o pruebas finalizadas.</p>{% endif %}
+</section>

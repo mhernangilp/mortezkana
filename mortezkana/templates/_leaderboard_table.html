@@ -1,0 +1,5 @@
+{% from '_avatars.html' import avatar %}
+{% if individuals %}
+<div class="card"><table><caption class="sr-only">Clasificación individual. Las puntuaciones iguales comparten posición.</caption><thead><tr><th scope="col">Pos.</th><th scope="col">Participante</th><th scope="col" class="number">Puntos</th></tr></thead><tbody>{% for person in individuals %}<tr><td>{{ person.rank }}</td><th scope="row"><span class="identity">{{ avatar('participants', person) }}<span>{{ person.name }}</span></span></th><td class="number">{{ person.points }}</td></tr>{% endfor %}</tbody></table></div>
+<p class="muted">Los empates comparten posición. No se aplica un desempate por orden alfabético.</p>
+{% else %}<p class="empty">Todavía no hay participantes. ¡Pronto empieza el juego!</p>{% endif %}

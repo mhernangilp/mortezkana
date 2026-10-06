@@ -1,0 +1,9 @@
+<div class="round-summary">
+<p class="eyebrow">Ronda {{ match.round_number }} · {{ match.format }}</p>
+<div class="matchup">
+{% for side, label in [('left', 'Lado A'), ('right', 'Lado B')] %}
+<div><span class="muted">{{ label }}</span>{% if match[side + '_team_name'] %}<h4>{{ match[side + '_team_name'] }}</h4>{% endif %}{% if match[side + '_people'] %}<ul>{% for person in match[side + '_people'] %}<li>{{ person.participant_name }}</li>{% endfor %}</ul>{% endif %}</div>
+{% endfor %}
+</div>
+<p class="result-note"><strong>Resultado:</strong> {{ match.outcome }}</p>
+</div>

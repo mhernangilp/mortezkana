@@ -2,7 +2,7 @@
 {% for kind, title in [('individual', 'Puntuaciones individuales'), ('team', 'Puntuaciones de equipos')] %}
 {% set rows = awards|selectattr('target_kind', 'equalto', kind)|list %}
 {% if rows %}
-<table><caption>{{ title }}</caption><thead><tr><th scope="col">{{ 'Persona' if kind == 'individual' else 'Equipo' }}</th><th scope="col" class="number">Puntos</th></tr></thead><tbody>{% for award in rows %}<tr><th scope="row">{{ award.target_name }}</th><td class="number">{{ award.points }}</td></tr>{% endfor %}</tbody></table>
+<table><caption>{{ title }}</caption><thead><tr><th scope="col">{{ 'Persona' if kind == 'individual' else 'Equipo' }} y resultado</th><th scope="col" class="number">Puntos</th></tr></thead><tbody>{% for award in rows %}<tr><th scope="row">{{ award.target_name }}{% if award.award_kind == 'extraordinary' %} <span class="badge">Extraordinaria</span>{% endif %}<span class="result-note"><strong>Resultado o motivo:</strong> {{ award.notes or 'Sin detalle registrado.' }}</span></th><td class="number">{{ award.points }}</td></tr>{% endfor %}</tbody></table>
 {% endif %}
 {% endfor %}
 {% else %}<p class="muted">Esta prueba ha finalizado sin puntuaciones registradas.</p>{% endif %}

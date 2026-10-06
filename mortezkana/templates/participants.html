@@ -1,1 +1,13 @@
-{% extends 'base.html' %}{% block title %}Participantes · Mortezkana{% endblock %}{% block content %}<p class="eyebrow">La gente del finde</p><h1>Participantes</h1><div class="stack">{% for team in participants|groupby('team_name') %}<section class="card padded"><h2>{{ team.grouper }}</h2><ul>{% for person in team.list %}<li>{{ person.name }}</li>{% endfor %}</ul></section>{% else %}<p class="empty">Todavía no se han inscrito participantes.</p>{% endfor %}</div>{% endblock %}
+{% extends 'base.html' %}
+{% from '_avatars.html' import avatar %}
+{% block title %}Participantes · Mortezkana{% endblock %}
+{% block content %}
+<p class="eyebrow">La gente del finde</p><h1>Participantes</h1><div class="stack">
+{% for team in teams %}
+<section class="card padded"><h2 class="identity">{{ avatar('teams', team, true) }}<span>{{ team.name }}</span></h2>
+<ul class="roster">{% for person in participants|selectattr('team_id', 'equalto', team.id) %}<li class="identity">{{ avatar('participants', person) }}<span>{{ person.name }}</span></li>{% else %}<li class="muted">Todavía sin integrantes.</li>{% endfor %}</ul></section>
+{% endfor %}
+{% set unassigned = participants|selectattr('team_id', 'none')|list %}
+{% if unassigned %}<section class="card padded"><h2>Sin equipo</h2><ul class="roster">{% for person in unassigned %}<li class="identity">{{ avatar('participants', person) }}<span>{{ person.name }}</span></li>{% endfor %}</ul></section>{% endif %}
+{% if not participants %}<p class="empty">Todavía no se han inscrito participantes.</p>{% endif %}
+</div>{% endblock %}

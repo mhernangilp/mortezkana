@@ -1,15 +1,20 @@
 from functools import wraps
+from io import BytesIO
 import hashlib
 import json
 import secrets
 import sqlite3
 import time
 
-from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, session, url_for
+from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, send_file, session, url_for
 from werkzeug.security import check_password_hash
 
 from .db import get_db
-from .domain import challenge_results, leaderboard
+from .avatars import AVATAR_TABLES, normalize_avatar
+from .domain import (INDIVIDUAL_POINTS, HYBRID_TEAM_POINTS, HYBRID_INDIVIDUAL_POINTS, TEAM_MEMBER_POINTS,
+                     challenge_results, chronology_fingerprint, compact_chronology,
+                     leaderboard, reorder_challenges, score_history)
+from .rounds import rounds_by_challenge, save_round
 
 bp = Blueprint('web', __name__)
 LABELS = {'individual': 'Individual', 'team': 'Por equipos', 'hybrid': 'Mixta',
@@ -33,7 +38,10 @@ def csrf_token():
 
 @bp.app_context_processor
 def template_helpers():
-    return {'csrf_token': csrf_token, 'labels': LABELS}
+    unlocked = get_db().execute('SELECT finale_unlocked FROM competition_settings WHERE id=1').fetchone()[0]
+    return {'csrf_token': csrf_token, 'labels': LABELS, 'finale_unlocked': bool(unlocked),
+            'individual_points': INDIVIDUAL_POINTS, 'hybrid_team_points': HYBRID_TEAM_POINTS,
+            'hybrid_individual_points': HYBRID_INDIVIDUAL_POINTS, 'team_member_points': TEAM_MEMBER_POINTS}
 
 
 @bp.before_app_request
@@ -72,20 +80,69 @@ def option_field(name, options):
 @bp.get('/')
 def index():
     db = get_db()
-    return render_template('index.html', individuals=leaderboard(db, 'participant'), teams=leaderboard(db, 'team'))
+    return render_template('index.html', individuals=leaderboard(db, 'participant'),
+                           teams=leaderboard(db, 'team'), history=score_history(db))
+
+
+@bp.get('/final')
+def finale():
+    db = get_db()
+    if not db.execute('SELECT finale_unlocked FROM competition_settings WHERE id=1').fetchone()[0]:
+        abort(404)
+    individuals = leaderboard(db, 'participant')
+    teams = leaderboard(db, 'team')
+    podium = [{'rank': position, 'people': [person for person in individuals if person['rank'] == position]}
+              for position in (2, 1, 3) if any(person['rank'] == position for person in individuals)]
+    return render_template('finale.html', individuals=individuals, teams=teams, podium=podium,
+                           winning_teams=[team for team in teams if team['rank'] == 1])
 
 
 @bp.get('/challenges')
 def challenges():
     db = get_db()
-    rows = db.execute('SELECT * FROM challenges ORDER BY day, id').fetchall()
-    return render_template('challenges.html', challenges=rows, results_by_challenge=challenge_results(db))
+    rows = db.execute('SELECT * FROM challenges ORDER BY chronology_position, id').fetchall()
+    return render_template('challenges.html', challenges=rows, results_by_challenge=challenge_results(db),
+                           rounds_by_challenge=rounds_by_challenge(db))
 
 
 @bp.get('/participants')
 def participants():
-    rows = get_db().execute("SELECT p.*, COALESCE(t.name, 'Sin equipo') AS team_name FROM participants p LEFT JOIN teams t ON t.id = p.team_id ORDER BY t.id, p.name").fetchall()
-    return render_template('participants.html', participants=rows)
+    db = get_db()
+    rows = db.execute('SELECT id, name, team_id, (avatar IS NOT NULL) AS has_avatar FROM participants ORDER BY name, id').fetchall()
+    teams = db.execute('SELECT id, name, (avatar IS NOT NULL) AS has_avatar FROM teams ORDER BY id').fetchall()
+    return render_template('participants.html', participants=rows, teams=teams)
+
+
+@bp.get('/avatars/<kind>/<int:entity_id>')
+def avatar(kind, entity_id):
+    if kind not in AVATAR_TABLES:
+        abort(404)
+    row = get_db().execute(f'SELECT avatar FROM {AVATAR_TABLES[kind]} WHERE id=?', (entity_id,)).fetchone()
+    if row is None:
+        abort(404)
+    if row['avatar'] is None:
+        return redirect(url_for('static', filename='avatar-team.svg' if kind == 'teams' else 'avatar-person.svg'))
+    return send_file(BytesIO(row['avatar']), mimetype='image/jpeg', download_name='avatar.jpg', max_age=0)
+
+
+@bp.post('/admin/avatars/<kind>/<int:entity_id>')
+@admin_required
+def change_avatar(kind, entity_id):
+    if kind not in AVATAR_TABLES:
+        abort(404)
+    db = get_db()
+    if db.execute(f'SELECT id FROM {AVATAR_TABLES[kind]} WHERE id=?', (entity_id,)).fetchone() is None:
+        abort(404)
+    try:
+        action = option_field('action', ('upload', 'default'))
+        photo = normalize_avatar(request.files.get('photo')) if action == 'upload' else None
+        with db:
+            require_updated(db.execute(f'UPDATE {AVATAR_TABLES[kind]} SET avatar=? WHERE id=?', (photo, entity_id)))
+    except ValueError as error:
+        flash(str(error), 'error')
+    else:
+        flash('Avatar guardado.' if action == 'upload' else 'Avatar predeterminado restaurado.', 'success')
+    return redirect(url_for('web.admin'))
 
 
 @bp.route('/admin/login', methods=['GET', 'POST'])
@@ -113,11 +170,14 @@ def admin():
     if not session.get('admin'):
         return redirect(url_for('web.login'))
     db = get_db()
+    session.setdefault('round_submission', secrets.token_hex(32))
+    challenges = db.execute('SELECT * FROM challenges ORDER BY chronology_position, id').fetchall()
     return render_template('admin.html',
-        teams=db.execute('SELECT * FROM teams ORDER BY id').fetchall(),
-        participants=db.execute('SELECT * FROM participants ORDER BY id').fetchall(),
-        challenges=db.execute('SELECT * FROM challenges ORDER BY day, id').fetchall(),
-        results_by_challenge=challenge_results(db))
+        teams=db.execute('SELECT id, name, (avatar IS NOT NULL) AS has_avatar FROM teams ORDER BY id').fetchall(),
+        participants=db.execute('SELECT id, name, team_id, (avatar IS NOT NULL) AS has_avatar FROM participants ORDER BY id').fetchall(),
+        challenges=challenges, chronology_fingerprint=chronology_fingerprint(challenges),
+        results_by_challenge=challenge_results(db), rounds_by_challenge=rounds_by_challenge(db),
+        round_submission=session['round_submission'])
 
 
 def require_updated(cursor):
@@ -151,8 +211,23 @@ def mutate(action):
                 team_id = integer_field('team_id') if request.form.get('team_id', '') else None
                 require_updated(db.execute('UPDATE participants SET team_id=? WHERE id=?', (team_id, integer_field('participant_id'))))
             elif action == 'challenges':
-                db.execute('INSERT INTO challenges(name, description, kind, day) VALUES (?, ?, ?, ?)',
-                    challenge_fields())
+                fields = challenge_fields()
+                db.execute('BEGIN IMMEDIATE')
+                position = db.execute('SELECT COALESCE(MAX(chronology_position), 0) + 1 FROM challenges').fetchone()[0]
+                db.execute('INSERT INTO challenges(name, description, kind, day, chronology_position) VALUES (?, ?, ?, ?, ?)',
+                    (*fields, position))
+            elif action == 'reorder-challenges':
+                try:
+                    identities = [int(value) for value in request.form.getlist('challenge_id')]
+                    positions = [int(value) for value in request.form.getlist('position')]
+                except ValueError:
+                    raise ValueError('Introduce posiciones enteras válidas para las pruebas.') from None
+                db.execute('BEGIN IMMEDIATE')
+                if not reorder_challenges(db, identities, positions, request.form.get('fingerprint')):
+                    abort(409)
+            elif action == 'finale':
+                state = option_field('state', ('unlock', 'lock'))
+                db.execute('UPDATE competition_settings SET finale_unlocked=? WHERE id=1', (int(state == 'unlock'),))
             elif action == 'edit-challenges':
                 require_updated(db.execute('UPDATE challenges SET name=?, description=?, kind=?, day=? WHERE id=?',
                     (*challenge_fields(), integer_field('challenge_id'))))
@@ -170,23 +245,45 @@ def mutate(action):
                     raise ValueError('Selecciona un participante o equipo válido.') from None
                 if kind not in ('participant', 'team') or target_id <= 0:
                     raise ValueError('Selecciona un participante o equipo válido.')
-                db.execute('INSERT INTO results(challenge_id, participant_id, team_id, points, notes) VALUES (?, ?, ?, ?, ?)',
+                award_kind = request.form.get('award_kind', 'standard')
+                if award_kind not in ('standard', 'extraordinary'):
+                    raise ValueError('Selecciona un tipo de puntuación válido.')
+                db.execute('INSERT INTO results(challenge_id, participant_id, team_id, points, notes, award_kind) VALUES (?, ?, ?, ?, ?, ?)',
                     (integer_field('challenge_id'), target_id if kind == 'participant' else None,
-                     target_id if kind == 'team' else None, integer_field('points', -1000000), text_field('notes', 500)))
+                     target_id if kind == 'team' else None, integer_field('points', -1000000), text_field('notes', 500), award_kind))
             elif action == 'corrections':
                 cursor = db.execute("""UPDATE results SET points=?, notes=?, revision=revision+1,
                     updated_at=strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id=? AND revision=?""",
                     (integer_field('points', -1000000), text_field('notes', 500), integer_field('result_id'), integer_field('revision')))
                 if cursor.rowcount != 1:
                     abort(409)
+            elif action in ('rounds', 'edit-rounds'):
+                db.execute('BEGIN IMMEDIATE')
+                previous = None
+                if action == 'edit-rounds':
+                    previous = db.execute('SELECT * FROM rounds WHERE id=?', (integer_field('round_id'),)).fetchone()
+                    if previous is None:
+                        abort(404)
+                else:
+                    expected = session.get('round_submission')
+                    if not expected or request.form.get('submission_key') != expected:
+                        abort(409)
+                    if db.execute('SELECT 1 FROM rounds WHERE submission_key=?', (expected,)).fetchone():
+                        abort(409)
+                save_round(db, request.form, (integer_field('round_number', 1, 999), text_field('format'), text_field('outcome', 1000)), previous)
             else:
                 abort(404)
     except ValueError as error:
         flash(str(error), 'error')
     except sqlite3.IntegrityError:
-        flash('No se pudo guardar: revisa los límites de equipos y participantes, el tipo de prueba o si el resultado ya existe. No puedes cambiar el tipo de una prueba si sus resultados son incompatibles.', 'error')
+        flash('No se pudo guardar: revisa los límites, las personas y equipos seleccionados o si el resultado ya existe. Las puntuaciones extraordinarias son individuales y solo se admiten en pruebas por equipos. No puedes cambiar el tipo de una prueba si sus resultados son incompatibles.', 'error')
     else:
-        flash('Cambios guardados.', 'success')
+        if action == 'rounds':
+            session['round_submission'] = secrets.token_hex(32)
+        if action == 'finale':
+            flash('Pantalla final oculta.' if state == 'lock' else 'Pantalla final publicada.', 'success')
+        else:
+            flash('Cambios guardados.', 'success')
     return redirect(url_for('web.admin'))
 
 
@@ -205,10 +302,20 @@ def deletion_snapshot(db, kind, entity_id):
         abort(404)
     results = db.execute(f'SELECT * FROM results WHERE {result_column}=? ORDER BY id', (entity_id,)).fetchall()
     members = db.execute('SELECT * FROM participants WHERE team_id=? ORDER BY id', (entity_id,)).fetchall() if kind == 'teams' else []
-    data = {'entity': dict(entity), 'results': [dict(row) for row in results], 'members': [dict(row) for row in members]}
+    def serializable(row):
+        values = dict(row)
+        if values.get('avatar') is not None:
+            values['avatar'] = hashlib.sha256(values['avatar']).hexdigest()
+        return values
+    data = {'entity': serializable(entity), 'results': [dict(row) for row in results],
+            'members': [serializable(row) for row in members]}
+    rounds = db.execute('SELECT * FROM rounds WHERE challenge_id=? ORDER BY id', (entity_id,)).fetchall() if kind == 'challenges' else []
+    data['rounds'] = [dict(row) for row in rounds]
+    if kind == 'challenges':
+        data['round_people'] = [dict(row) for row in db.execute('SELECT rp.* FROM round_people rp JOIN rounds r ON r.id=rp.round_id WHERE r.challenge_id=? ORDER BY rp.id', (entity_id,))]
     fingerprint = hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
     return {'entity': entity, 'label': label, 'result_count': len(results),
-            'member_count': len(members), 'fingerprint': fingerprint}
+            'member_count': len(members), 'round_count': len(rounds), 'fingerprint': fingerprint}
 
 
 @bp.route('/admin/delete/<kind>/<int:entity_id>', methods=['GET', 'POST'])
@@ -243,6 +350,8 @@ def delete_entity(kind, entity_id):
             abort(409)
         table = DELETE_TARGETS[kind][0]
         db.execute(f'DELETE FROM {table} WHERE id=?', (entity_id,))
+        if kind == 'challenges':
+            compact_chronology(db)
     session.pop('deletion', None)
     flash('Eliminación completada. La clasificación se ha actualizado.', 'success')
     return redirect(url_for('web.admin'))

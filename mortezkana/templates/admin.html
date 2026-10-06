@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% from '_avatars.html' import avatar_controls with context %}
 {% block title %}Administración · Mortezkana{% endblock %}
 {% macro token() %}<input type="hidden" name="csrf" value="{{ csrf_token() }}">{% endmacro %}
 {% macro delete_link(kind, entity) %}
@@ -8,11 +9,13 @@
 <label>Nombre<input name="name" value="{{ challenge.name if challenge else '' }}" required maxlength="80"></label>
 <label>Descripción y reglas<textarea name="description" maxlength="2000" rows="3">{{ challenge.description if challenge else '' }}</textarea></label>
 <label>Tipo<select name="kind">{% for kind in ['individual', 'team', 'hybrid'] %}<option value="{{ kind }}" {% if challenge and challenge.kind == kind %}selected{% endif %}>{{ labels[kind] }}</option>{% endfor %}</select></label>
-<label>Día<select name="day">{% for day in [1, 2, 3] %}<option {% if challenge and challenge.day == day %}selected{% endif %}>{{ day }}</option>{% endfor %}</select></label>
+<label>Día (solo informativo)<select name="day">{% for day in [1, 2, 3] %}<option {% if challenge and challenge.day == day %}selected{% endif %}>{{ day }}</option>{% endfor %}</select></label>
 {% endmacro %}
 {% block content %}
 <div class="heading"><h1>Administración</h1><form action="{{ url_for('web.logout') }}" method="post">{{ token() }}<button class="secondary">Salir</button></form></div>
 <p>Crea las personas, prepara los equipos y después asigna sus integrantes.</p>
+{% include '_scoring_guide.html' %}
+<datalist id="match-formats"><option value="Equipo vs Equipo"><option value="1vs1"><option value="2vs2"><option value="1vs2"></datalist>
 <div class="admin-grid">
 <section class="card padded">
   <h2>1. Crear personas · {{ participants|length }}/10</h2>
@@ -20,6 +23,7 @@
   <div class="stack management-list">{% for person in participants %}
     <details><summary>{{ person.name }}</summary>
       <form method="post" action="{{ url_for('web.mutate', action='edit-participants') }}">{{ token() }}<input type="hidden" name="participant_id" value="{{ person.id }}"><label>Nombre<input name="name" value="{{ person.name }}" required maxlength="80"></label><button>Guardar nombre</button></form>
+      {{ avatar_controls('participants', person) }}
       {{ delete_link('participants', person) }}
     </details>
   {% else %}<p class="muted">Todavía no hay personas creadas.</p>{% endfor %}</div>
@@ -30,6 +34,7 @@
   <div class="stack management-list">{% for team in teams %}
     <details><summary>{{ team.name }} · {{ participants|selectattr('team_id', 'equalto', team.id)|list|length }}/5</summary>
       <form method="post" action="{{ url_for('web.mutate', action='edit-teams') }}">{{ token() }}<input type="hidden" name="team_id" value="{{ team.id }}"><label>Nombre<input name="name" value="{{ team.name }}" required maxlength="80"></label><button>Guardar nombre</button></form>
+      {{ avatar_controls('teams', team) }}
       {{ delete_link('teams', team) }}
     </details>
   {% else %}<p class="muted">Todavía no hay equipos creados.</p>{% endfor %}</div>
@@ -54,13 +59,25 @@
   <form method="post" action="{{ url_for('web.mutate', action='results') }}">{{ token() }}
     <label>Prueba<select name="challenge_id">{% for challenge in challenges %}<option value="{{ challenge.id }}">{{ challenge.name }} · {{ labels[challenge.kind] }}</option>{% endfor %}</select></label>
     <label>Persona o equipo<select name="target">{% for person in participants %}<option value="participant:{{ person.id }}">{{ person.name }} (individual)</option>{% endfor %}{% for team in teams %}<option value="team:{{ team.id }}">{{ team.name }} (equipo)</option>{% endfor %}</select></label>
+    <label>Tipo de puntuación<select name="award_kind"><option value="standard">Habitual</option><option value="extraordinary">Extraordinaria individual (solo pruebas por equipos)</option></select></label>
+    <p class="muted">Una puntuación extraordinaria se suma a la habitual de esa persona. Puedes registrar una de cada tipo por persona y prueba; para corregirlas, utiliza «Resultados y correcciones».</p>
     <label>Puntos<input name="points" type="number" step="1" min="-1000000" max="1000000" required></label><label>Resultado o motivo<textarea name="notes" required maxlength="500" rows="2"></textarea></label><button>Guardar resultado</button>
   </form>{% else %}<p>Primero añade personas o equipos y pruebas.</p>{% endif %}
 </section>
 </div>
+<section class="card padded"><h2>Orden cronológico de las pruebas</h2><p class="muted">Este orden determina el gráfico y la lista de pruebas. El día no influye en la cronología. Las pruebas nuevas se añaden al final.</p>
+{% if challenges %}<form method="post" action="{{ url_for('web.mutate', action='reorder-challenges') }}">{{ token() }}<input type="hidden" name="fingerprint" value="{{ chronology_fingerprint }}">
+{% for challenge in challenges %}<input type="hidden" name="challenge_id" value="{{ challenge.id }}"><label>{{ challenge.name }} · Día {{ challenge.day }}<input name="position" type="number" min="1" max="{{ challenges|length }}" step="1" value="{{ challenge.chronology_position }}" required></label>{% endfor %}
+<button>Guardar orden cronológico</button></form>{% else %}<p class="muted">Añade pruebas para configurar su orden.</p>{% endif %}
+</section>
+<section class="card padded"><h2>Pantalla de finalización</h2><p class="muted">Revisa las puntuaciones antes de desbloquear el podio. La pantalla final refleja los resultados actuales y las correcciones posteriores.</p>
+<p>{{ 'La pantalla final está visible para todos.' if finale_unlocked else 'La pantalla final está oculta.' }}</p>
+<form method="post" action="{{ url_for('web.mutate', action='finale') }}">{{ token() }}<input type="hidden" name="state" value="{{ 'lock' if finale_unlocked else 'unlock' }}"><button>{{ 'Ocultar la pantalla final' if finale_unlocked else 'Desbloquear la pantalla final' }}</button></form>
+{% if finale_unlocked %}<a class="button secondary finale-link" href="{{ url_for('web.finale') }}">Ver la pantalla final</a>{% endif %}
+</section>
 <section><h2>Gestionar pruebas</h2><div class="stack">
 {% for challenge in challenges %}
-  <details class="card padded"><summary>{{ challenge.name }} · Día {{ challenge.day }} · {{ labels[challenge.status] }}</summary>
+  <details class="card padded"><summary>{{ challenge.chronology_position }}. {{ challenge.name }} · Día {{ challenge.day }} · {{ labels[challenge.status] }}</summary>
     <form method="post" action="{{ url_for('web.mutate', action='edit-challenges') }}">{{ token() }}<input type="hidden" name="challenge_id" value="{{ challenge.id }}">{{ challenge_fields(challenge) }}<p class="muted">El tipo solo se puede cambiar si es compatible con los resultados registrados.</p><button>Guardar prueba</button></form>
     <form class="management-list" method="post" action="{{ url_for('web.mutate', action='status') }}">{{ token() }}<input type="hidden" name="challenge_id" value="{{ challenge.id }}"><label>Estado<select name="status">{% for status in ['pending', 'active', 'completed'] %}<option value="{{ status }}" {% if status == challenge.status %}selected{% endif %}>{{ labels[status] }}</option>{% endfor %}</select></label><button>Actualizar estado</button></form>
     {{ delete_link('challenges', challenge) }}
@@ -71,9 +88,14 @@
 {% for challenge in challenges %}
   {% set results = results_by_challenge.get(challenge.id, []) %}
   <details class="card padded result-group"><summary>{{ challenge.name }} · {{ results|length }} resultados · {{ labels[challenge.status] }}</summary>
+    {% set matches = rounds_by_challenge.get(challenge.id, []) %}
+    <details class="management-list"><summary>Rondas · {{ matches|length }} enfrentamientos</summary>
+      <div class="stack">{% for match in matches %}<div class="round-entry">{% include '_round_summary.html' %}<details><summary>Corregir esta ronda</summary>{% include '_round_form.html' %}</details></div>{% else %}<p class="muted">Todavía no hay rondas registradas.</p>{% endfor %}</div>
+      <details class="management-list"><summary>Registrar una ronda</summary>{% with match=none %}{% include '_round_form.html' %}{% endwith %}</details>
+    </details>
     {% if challenge.status == 'completed' %}<h3>Resumen de puntuaciones</h3>{% with awards=results %}{% include '_score_summary.html' %}{% endwith %}{% endif %}
     <div class="stack management-list">{% for result in results %}
-      <details><summary>{{ result.target_name }} · {{ labels[result.target_kind] }} · {{ result.points }} pts</summary><p>{{ result.notes }}</p>
+      <details><summary>{{ result.target_name }} · {{ labels[result.target_kind] }}{% if result.award_kind == 'extraordinary' %} · Extraordinaria{% endif %} · {{ result.points }} pts</summary><p class="result-note">{{ result.notes }}</p>
         <form method="post" action="{{ url_for('web.mutate', action='corrections') }}">{{ token() }}<input type="hidden" name="result_id" value="{{ result.id }}"><input type="hidden" name="revision" value="{{ result.revision }}"><label>Puntos corregidos<input name="points" type="number" value="{{ result.points }}" min="-1000000" max="1000000" step="1" required></label><label>Motivo de la corrección<textarea name="notes" maxlength="500" required></textarea></label><button>Guardar corrección</button></form>
       </details>
     {% else %}{% if challenge.status != 'completed' %}<p class="muted">Todavía no hay resultados para esta prueba.</p>{% endif %}{% endfor %}</div>

@@ -1,0 +1,14 @@
+{% macro avatar(kind, entity, large=false) %}
+<img class="avatar{{ ' avatar-large' if large else '' }}" src="{{ url_for('web.avatar', kind=kind, entity_id=entity.id) if entity.has_avatar else url_for('static', filename='avatar-team.svg' if kind == 'teams' else 'avatar-person.svg') }}" alt="" width="{{ 64 if large else 40 }}" height="{{ 64 if large else 40 }}" loading="lazy" decoding="async">
+{% endmacro %}
+{% macro avatar_controls(kind, entity) %}
+<div class="avatar-editor">
+  {{ avatar(kind, entity, true) }}
+  <form method="post" enctype="multipart/form-data" action="{{ url_for('web.change_avatar', kind=kind, entity_id=entity.id) }}">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="action" value="upload">
+    <label>Foto de {{ entity.name }}<input type="file" name="photo" accept="image/jpeg,image/png,image/webp" required></label>
+    <p class="muted">JPEG, PNG o WebP, hasta 5 MB. La foto se recorta en cuadrado para el avatar.</p><button>Guardar avatar</button>
+  </form>
+  {% if entity.has_avatar %}<form method="post" action="{{ url_for('web.change_avatar', kind=kind, entity_id=entity.id) }}"><input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="action" value="default"><button class="secondary">Restaurar avatar predeterminado</button></form>{% endif %}
+</div>
+{% endmacro %}
